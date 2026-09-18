@@ -1,32 +1,687 @@
-.app {
-  max-width: 400px;
-  margin: 40px auto;
-  font-family: sans-serif;
-}
-
-label {
+/* Layout Wrapper */
+.irctc-layout {
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 16px;
 }
 
-input {
-  padding: 8px;
-  font-size: 16px;
+/* 1. Header Navigation */
+.irctc-header {
+  background: linear-gradient(135deg, var(--irctc-blue-dark) 0%, var(--irctc-blue) 100%);
+  color: #ffffff;
+  padding: 12px 24px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: var(--shadow-md);
+  border-bottom: 3px solid var(--irctc-orange);
 }
 
-.remaining {
+.header-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.brand-section {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-logo-badge {
+  width: 44px;
+  height: 44px;
+  background: #ffffff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
   font-size: 20px;
-  font-weight: bold;
+  color: var(--irctc-blue);
+  box-shadow: var(--shadow-sm);
 }
 
-button {
-  padding: 10px 16px;
-  font-size: 16px;
+.brand-title {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-title span {
+  color: var(--irctc-orange);
+}
+
+.header-status-section {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.live-clock {
+  font-size: 13px;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  background: #22c55e;
+  border-radius: 50%;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+  70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+/* 2. Main Container */
+.main-content {
+  max-width: 1200px;
+  margin: 24px auto;
+  padding: 0 16px;
+  width: 100%;
+}
+
+/* 3. Search Hero Card */
+.search-card {
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-light);
+  margin-bottom: 28px;
+}
+
+.search-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-light);
+  padding-bottom: 14px;
+  margin-bottom: 20px;
+}
+
+.search-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--irctc-blue);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tatkal-timer-banner {
+  background: var(--badge-amber);
+  color: var(--badge-amber-text);
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Search Form Grid */
+.search-form-grid {
+  display: grid;
+  grid-template-columns: 2fr auto 2fr 1.5fr 1.5fr 1.5fr;
+  gap: 12px;
+  align-items: end;
+}
+
+@media (max-width: 960px) {
+  .search-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.form-control {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  border: 1.5px solid var(--border-light);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text-primary);
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.form-control:focus {
+  border-color: var(--irctc-blue-light);
+  box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1);
+}
+
+.swap-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-light);
+  background: #f8fafc;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--irctc-blue);
+  transition: all 0.2s;
+  margin-bottom: 2px;
+}
+
+.swap-btn:hover {
+  background: var(--irctc-blue);
+  color: #ffffff;
+  transform: rotate(180deg);
+}
+
+.search-submit-btn {
+  background: var(--irctc-orange);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 11px 20px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  height: 44px;
+}
+
+.search-submit-btn:hover {
+  background: var(--irctc-orange-hover);
+}
+
+/* Quick Checkbox Options */
+.quick-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border-light);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   cursor: pointer;
 }
 
-.result {
-  margin-top: 16px;
+/* 4. Train Listing Section */
+.trains-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.train-count-badge {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Train Card */
+.train-card {
+  background: var(--bg-card);
+  border-radius: 12px;
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 20px;
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.train-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: #cbd5e1;
+}
+
+.train-card-header {
+  background: #f8fafc;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.train-title-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.train-name {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--irctc-blue);
+}
+
+.train-type-tag {
+  background: #e0e7ff;
+  color: #3730a3;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.train-days {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.train-schedule-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  padding: 20px;
+  align-items: center;
+  text-align: center;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.schedule-point.left {
+  text-align: left;
+}
+
+.schedule-point.right {
+  text-align: right;
+}
+
+.station-time {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.station-code {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--irctc-blue-light);
+}
+
+.station-name {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.duration-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.duration-line {
+  width: 80%;
+  height: 2px;
+  background: #cbd5e1;
+  position: relative;
+  margin: 6px 0;
+}
+
+.duration-line::after {
+  content: '▶';
+  position: absolute;
+  right: -4px;
+  top: -8px;
+  font-size: 10px;
+  color: #64748b;
+}
+
+.duration-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Class & Quota Availability Chips */
+.train-classes-container {
+  padding: 16px 20px;
+  background: #fafafa;
+}
+
+.classes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.class-chip {
+  background: #ffffff;
+  border: 1.5px solid var(--border-light);
+  border-radius: 8px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.class-chip:hover {
+  border-color: var(--irctc-blue-light);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.class-chip.selected {
+  border-color: var(--irctc-orange);
+  background: #fffaf7;
+  box-shadow: 0 0 0 2px rgba(251, 100, 27, 0.2);
+}
+
+.chip-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.chip-tier {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.chip-fare {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--irctc-blue);
+}
+
+.chip-status {
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.status-available {
+  color: var(--badge-green-text);
+}
+
+.status-soldout {
+  color: var(--badge-red-text);
+}
+
+.live-sync-indicator {
+  font-size: 10px;
+  background: #e2e8f0;
+  color: #475569;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* 5. Booking Actions Bar inside train card */
+.train-actions-bar {
+  padding: 14px 20px;
+  background: #ffffff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--border-light);
+}
+
+.selected-quota-summary {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.selected-quota-summary strong {
+  color: var(--irctc-blue);
+}
+
+.book-tatkal-btn {
+  background: var(--irctc-orange);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.book-tatkal-btn:hover {
+  background: var(--irctc-orange-hover);
+  box-shadow: 0 4px 12px rgba(251, 100, 27, 0.35);
+}
+
+.book-tatkal-btn:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* 6. Simulator & Stress-Test Panel */
+.simulator-panel {
+  background: linear-gradient(135deg, #091a38 0%, #172554 100%);
+  color: #ffffff;
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-top: 32px;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.simulator-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.sim-title {
+  font-size: 16px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sim-controls {
+  display: flex;
+  gap: 10px;
+}
+
+.sim-btn {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.sim-btn:hover {
+  background: #1d4ed8;
+}
+
+.sim-btn-danger {
+  background: #dc2626;
+}
+
+.sim-btn-danger:hover {
+  background: #b91c1c;
+}
+
+.telemetry-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 14px;
+}
+
+@media (max-width: 768px) {
+  .telemetry-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.telemetry-card {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+}
+
+.telemetry-label {
+  font-size: 11px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.telemetry-value {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+/* 7. Modal / Popup for Booking Confirmation */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 16px;
+}
+
+.modal-content {
+  background: #ffffff;
+  border-radius: 12px;
+  max-width: 500px;
+  width: 100%;
+  padding: 24px;
+  box-shadow: var(--shadow-xl);
+  border: 1px solid var(--border-light);
+  animation: slideUp 0.25s ease-out;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--border-light);
+  padding-bottom: 12px;
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--irctc-blue);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+/* E-Ticket Confirmation Card */
+.ticket-receipt {
+  border: 2px dashed #059669;
+  background: #f0fdf4;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 14px;
+}
+
+.ticket-pnr-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #bbf7d0;
+}
+
+.pnr-number {
+  font-size: 18px;
+  font-weight: 800;
+  color: #15803d;
+}
+
+.ticket-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.ticket-badge-confirmed {
+  background: #15803d;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.ticket-error {
+  border: 2px dashed #dc2626;
+  background: #fef2f2;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 14px;
+  color: #991b1b;
+  text-align: center;
 }
