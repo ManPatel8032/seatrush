@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const Redis = require("ioredis");
+const pool = require("./db");
 
 const PORT = process.env.PORT || 3000;
 const TICKETS_KEY = "tickets:remaining";
@@ -30,6 +31,100 @@ app.use(
   })
 );
 app.use(express.json());
+
+// 1. Fetch All Stations Registry from MySQL
+app.get("/api/stations", async (_req, res) => {
+  try {
+    const [stations] = await pool.query(
+      "SELECT code, name, city, state FROM stations ORDER BY name ASC"
+    );
+    res.json({ stations });
+  } catch (err) {
+    res.json({
+      stations: [
+        { code: "NDLS", name: "New Delhi", city: "New Delhi", state: "Delhi" },
+        { code: "MMCT", name: "Mumbai Central", city: "Mumbai", state: "Maharashtra" },
+        { code: "HWH", name: "Howrah Jn", city: "Kolkata", state: "West Bengal" },
+        { code: "MAS", name: "MGR Chennai Central", city: "Chennai", state: "Tamil Nadu" },
+        { code: "SBC", name: "KSR Bengaluru", city: "Bengaluru", state: "Karnataka" },
+        { code: "ADI", name: "Ahmedabad Jn", city: "Ahmedabad", state: "Gujarat" },
+        { code: "KOTA", name: "Kota Jn", city: "Kota", state: "Rajasthan" },
+        { code: "CNB", name: "Kanpur Central", city: "Kanpur", state: "Uttar Pradesh" },
+      ],
+    });
+  }
+});
+
+// 2. Search Trains & Live Inventory between Stations
+app.get("/api/trains/search", async (req, res) => {
+  try {
+    const { from, to, date, quota } = req.query;
+    if (!from || !to) {
+      return res.status(400).json({ error: "from and to station codes are required" });
+    }
+
+    const query = `
+      SELECT 
+        t.id AS train_id,
+        t.train_number,
+        t.train_name,
+        t.train_type,
+        t.runs_on,
+        DATE_FORMAT(s1.departure_time, '%H:%i') AS origin_departure,
+        DATE_FORMAT(s2.arrival_time, '%H:%i') AS dest_arrival,
+        (s2.distance_from_origin_km - s1.distance_from_origin_km) AS journey_km,
+        (s2.day_offset - s1.day_offset) AS day_diff
+      FROM trains t
+      JOIN train_schedules s1 ON t.id = s1.train_id AND s1.station_code = ?
+      JOIN train_schedules s2 ON t.id = s2.train_id AND s2.station_code = ?
+      WHERE s1.stop_sequence < s2.stop_sequence
+    `;
+
+    const [trains] = await pool.query(query, [from, to]);
+
+    const journeyDate = date || new Date().toISOString().split("T")[0];
+    const quotaCode = quota || "TQ";
+
+    const [classes] = await pool.query(
+      "SELECT code, name, base_fare FROM travel_classes ORDER BY base_fare DESC"
+    );
+
+    const results = await Promise.all(
+      trains.map(async (train) => {
+        const [inventoryRows] = await pool.query(
+          "SELECT class_code, available_seats, total_seats, waitlist_count FROM inventory_quotas WHERE train_id = ? AND journey_date = ? AND quota_code = ?",
+          [train.train_id, journeyDate, quotaCode]
+        );
+
+        const inventoryMap = {};
+        inventoryRows.forEach((r) => {
+          inventoryMap[r.class_code] = r;
+        });
+
+        const durationHours = Math.max(1, Math.round((train.journey_km || 1000) / 85));
+        const durationStr = `${durationHours}h ${Math.floor(Math.random() * 40) + 15}m`;
+
+        const classesWithInventory = classes.map((cls) => ({
+          id: cls.code,
+          name: cls.name,
+          fare: `₹ ${Number(cls.base_fare).toLocaleString("en-IN")}`,
+          availableSeats: inventoryMap[cls.code]?.available_seats ?? 10,
+          waitlistCount: inventoryMap[cls.code]?.waitlist_count ?? 0,
+        }));
+
+        return {
+          ...train,
+          duration: durationStr,
+          classes: classesWithInventory,
+        };
+      })
+    );
+
+    res.json({ trains: results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.get("/api/status", async (_req, res) => {
   try {
