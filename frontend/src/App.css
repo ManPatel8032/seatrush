@@ -124,85 +124,122 @@ body {
   align-items: center;
 }
 
-.nav-center-menu {
+.seatrush-brand-logo {
   display: flex;
   align-items: center;
-  gap: 14px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.nav-home-icon {
-  background: none;
-  border: none;
-  font-size: 18px;
+  gap: 10px;
   cursor: pointer;
-  padding: 4px;
+  user-select: none;
 }
 
-.nav-login-btn {
-  background: var(--irctc-navy);
+.brand-logo-icon {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, var(--irctc-orange) 0%, #ea580c 100%);
   color: #ffffff;
-  border: none;
-  border-radius: 4px;
-  padding: 6px 14px;
-  font-size: 12px;
-  font-weight: 800;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.nav-login-btn:hover {
-  background: var(--irctc-navy-dark);
-}
-
-.nav-link-item {
-  color: #1e293b;
-  cursor: pointer;
-  padding: 4px 6px;
-  font-weight: 700;
-  text-decoration: none;
-  background: none;
-  border: none;
-  font-size: 13px;
-  transition: color 0.15s;
-}
-
-.nav-link-item:hover {
-  color: var(--irctc-orange);
-}
-
-.nav-link-item.active {
-  color: var(--irctc-red);
-  border-bottom: 2px solid var(--irctc-red);
-}
-
-.nav-loyalty-badge {
-  background: #1e3a8a;
-  color: #ffffff;
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.irctc-circular-logo {
-  width: 44px;
-  height: 44px;
-  border: 2.5px solid var(--irctc-navy);
-  border-radius: 50%;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--irctc-navy);
+  font-size: 18px;
   font-weight: 900;
-  font-size: 11px;
+  box-shadow: 0 2px 8px rgba(251, 100, 27, 0.35);
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.brand-main {
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+  color: var(--irctc-navy);
+  line-height: 1.1;
+}
+
+.brand-accent {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--irctc-orange);
   letter-spacing: -0.5px;
 }
 
+.brand-sub {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.2px;
+}
+
+.nav-center-menu {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nav-link-btn {
+  background: none;
+  border: none;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.nav-link-btn:hover {
+  background: #f1f5f9;
+  color: var(--irctc-navy);
+}
+
+.nav-link-btn.active {
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 800;
+}
+
+.nav-right-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 5px 10px;
+  border-radius: 20px;
+}
+
+.status-pill.online {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.status-pill.offline {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
 /* =====================================================================
-   2. VIEW A: HOMEPAGE HERO SECTION (Matches User Screenshot)
+   2. VIEW A: HOMEPAGE HERO SECTION
    ===================================================================== */
 .irctc-hero-section {
   flex: 1;
@@ -211,7 +248,7 @@ body {
 
 .hero-background-wrapper {
   min-height: 640px;
-  background: #0f172a url('/vande-bharat-bg.png') no-repeat right center;
+  background: #0f172a url('/vande-bharat-train.jpg') no-repeat right center;
   background-size: cover;
   position: relative;
   display: flex;
@@ -223,7 +260,7 @@ body {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42, 0.15) 100%);
+  background: linear-gradient(90deg, rgba(15, 23, 42, 0.65) 0%, rgba(15, 23, 42, 0.25) 50%, rgba(15, 23, 42, 0.15) 100%);
   pointer-events: none;
 }
 

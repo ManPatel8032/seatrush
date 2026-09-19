@@ -322,45 +322,62 @@ function App() {
         {/* Main Navbar */}
         <div className="main-navbar-container">
           <div className="nav-left-brand">
-            <div className="railways-emblem-badge" title="Ministry of Railways">
-              <svg viewBox="0 0 100 100" width="46" height="46" fill="#0f2b5c">
-                <circle cx="50" cy="50" r="46" stroke="#0f2b5c" strokeWidth="4" fill="#ffffff" />
-                <path d="M50 16 L53 26 L63 26 L55 32 L58 42 L50 36 L42 42 L45 32 L37 26 L47 26 Z" fill="#0f2b5c" />
-                <circle cx="50" cy="58" r="18" fill="none" stroke="#0f2b5c" strokeWidth="3" />
-                <circle cx="50" cy="58" r="4" fill="#0f2b5c" />
-                <text x="50" y="86" fontSize="9" fontWeight="bold" textAnchor="middle" fill="#0f2b5c">
-                  BHARATIYA RAIL
-                </text>
-              </svg>
+            <div className="seatrush-brand-logo" onClick={() => setCurrentView("home")} title="SeatRush Home">
+              <div className="brand-logo-icon">⚡</div>
+              <div className="brand-text">
+                <span className="brand-main">SEAT</span><span className="brand-accent">RUSH</span>
+                <span className="brand-sub">Flash-Sale Engine</span>
+              </div>
             </div>
           </div>
 
           <nav className="nav-center-menu">
-            <button type="button" className="nav-home-icon" onClick={() => setCurrentView("home")} title="Home">
-              🏠
-            </button>
-            <button type="button" className="nav-login-btn">
-              LOGIN / REGISTER
+            <button
+              type="button"
+              className={`nav-link-btn ${currentView === "home" ? "active" : ""}`}
+              onClick={() => setCurrentView("home")}
+            >
+              <span>🏠</span> HOME
             </button>
             <button
               type="button"
-              className={`nav-link-item ${currentView === "results" ? "active" : ""}`}
-              onClick={() => setCurrentView("results")}
+              className={`nav-link-btn ${currentView === "results" ? "active" : ""}`}
+              onClick={() => {
+                if (trainsList.length === 0) {
+                  handleSearchTrains();
+                } else {
+                  setCurrentView("results");
+                }
+              }}
             >
-              TRAINS
+              <span>🚆</span> TRAINS & BOOKING
             </button>
-            <span className="nav-link-item">MEALS</span>
-            <span className="nav-loyalty-badge">LOYALTY</span>
-            <span className="nav-link-item">E-WALLET</span>
-            <span className="nav-link-item">ALERTS</span>
-            <span className="nav-link-item">OTHER SERVICES</span>
-            <span className="nav-link-item">CONTACT US</span>
+            <button
+              type="button"
+              className="nav-link-btn"
+              onClick={() => {
+                if (currentView !== "results") {
+                  if (trainsList.length === 0) handleSearchTrains();
+                  else setCurrentView("results");
+                }
+                setTimeout(() => {
+                  const el = document.querySelector(".simulator-panel");
+                  if (el) el.scrollIntoView({ behavior: "smooth" });
+                }, 100);
+              }}
+            >
+              <span>⚡</span> 200-USER SIMULATOR
+            </button>
           </nav>
 
-          <div className="nav-right-logo">
-            <div className="irctc-circular-logo" title="IRCTC Official">
-              <span className="logo-letter font-mono">IRCTC</span>
+          <div className="nav-right-actions">
+            <div className={`status-pill ${backendOnline ? "online" : "offline"}`}>
+              <span className="status-dot" />
+              <span>{backendOnline ? "REDIS LIVE" : "BACKEND OFFLINE"}</span>
             </div>
+            <button type="button" className="nav-login-btn">
+              LOGIN
+            </button>
           </div>
         </div>
       </header>
@@ -528,14 +545,15 @@ function App() {
 
               {/* Right Hero Branding */}
               <div className="hero-railway-branding">
-                <h1 className="hero-ir-title">INDIAN RAILWAYS</h1>
+                <h1 className="hero-ir-title">SEATRUSH</h1>
                 <div className="hero-motto">
-                  <span>Safety</span>
+                  <span>Speed</span>
                   <span className="motto-pipe">|</span>
-                  <span>Security</span>
+                  <span>Scale</span>
                   <span className="motto-pipe">|</span>
-                  <span>Punctuality</span>
+                  <span>Zero Overselling</span>
                 </div>
+                <p className="hero-subtext">High-Throughput Flash-Sale Ticketing Engine</p>
               </div>
             </div>
           </div>
