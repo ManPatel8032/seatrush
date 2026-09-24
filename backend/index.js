@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const Redis = require("ioredis");
 const pool = require("./db");
+const { createRateLimiter } = require("./gateway");
 
 const PORT = process.env.PORT || 3000;
 const TICKETS_KEY = "tickets:remaining";
@@ -31,6 +32,28 @@ app.use(
   })
 );
 app.use(express.json());
+// --- API GATEWAY LAYER ---
+
+// Strict limiter for booking (e.g., Burst capacity of 10, refills 2 tokens/sec per user)
+const bookingRateLimiter = createRateLimiter(redis, {
+  capacity: 10,
+  refillRatePerSec: 2,
+  prefix: "rl:book",
+});
+
+// General limiter for browsing & search (Burst capacity of 50, refills 10 tokens/sec)
+const generalRateLimiter = createRateLimiter(redis, {
+  capacity: 50,
+  refillRatePerSec: 10,
+  prefix: "rl:general",
+});
+
+// Protect all search & station routes
+app.use("/api/trains", generalRateLimiter);
+app.use("/api/stations", generalRateLimiter);
+
+// Protect the critical booking endpoint with the strict token-bucket limiter
+app.post("/api/book", bookingRateLimiter);
 
 // 1. Fetch All Stations Registry from MySQL
 app.get("/api/stations", async (_req, res) => {
