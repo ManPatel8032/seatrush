@@ -62,16 +62,18 @@ function createRateLimiter(redisClient, options = {}) {
   const capacity = options.capacity || 10;
   const refillRatePerSec = options.refillRatePerSec || 2;
   const prefix = options.prefix || "rl:gateway";
+  const keyGenerator = options.keyGenerator;
 
   return async function rateLimiterMiddleware(req, res, next) {
     try {
-      // 1. Identify Client (Prefer authenticated userId, fallback to IP address)
-      const identifier =
-        req.body?.userId ||
-        req.headers["x-user-id"] ||
-        req.ip ||
-        req.socket.remoteAddress ||
-        "anonymous";
+      // 1. Identify Client (Prefer custom keyGenerator, then userId, header, IP)
+      const identifier = keyGenerator
+        ? keyGenerator(req)
+        : (req.body?.userId ||
+           req.headers["x-user-id"] ||
+           req.ip ||
+           req.socket.remoteAddress ||
+           "anonymous");
 
       const key = `${prefix}:${identifier}`;
       const nowMs = Date.now();

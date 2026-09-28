@@ -1,5 +1,35 @@
 import { useEffect, useState } from "react";
 import "./App.css";
+import {
+  IconHome,
+  IconTrain,
+  IconZap,
+  IconActivity,
+  IconTicket,
+  IconFileText,
+  IconArrowRight,
+  IconArrowLeft,
+  IconSwap,
+  IconCalendar,
+  IconBriefcase,
+  IconGrid,
+  IconClock,
+  IconUsers,
+  IconPlay,
+  IconSquare,
+  IconRefresh,
+  IconAward,
+  IconShield,
+  IconCheckCircle,
+  IconAlertTriangle,
+  IconSearch,
+  IconX,
+  IconMapPin,
+  IconUser,
+  IconPrinter,
+  IconCheck,
+  IconFilter,
+} from "./components/Icons";
 
 const API = (import.meta.env.VITE_API_URL || "http://localhost:3000").replace(/\/$/, "");
 
@@ -7,21 +37,21 @@ const DEFAULT_STATIONS = [
   { code: "NDLS", name: "New Delhi" },
   { code: "MMCT", name: "Mumbai Central" },
   { code: "KOTA", name: "Kota Jn" },
-  { code: "BRC",  name: "Vadodara Jn" },
-  { code: "ST",   name: "Surat" },
-  { code: "HWH",  name: "Howrah Jn" },
-  { code: "CNB",  name: "Kanpur Central" },
+  { code: "BRC", name: "Vadodara Jn" },
+  { code: "ST", name: "Surat" },
+  { code: "HWH", name: "Howrah Jn" },
+  { code: "CNB", name: "Kanpur Central" },
   { code: "PRYJ", name: "Prayagraj Jn" },
-  { code: "DDU",  name: "Pt Deen Dayal Upadhyaya" },
+  { code: "DDU", name: "Pt Deen Dayal Upadhyaya" },
   { code: "GAYA", name: "Gaya Jn" },
-  { code: "MAS",  name: "MGR Chennai Central" },
-  { code: "AGC",  name: "Agra Cantt" },
-  { code: "GWL",  name: "Gwalior Jn" },
-  { code: "BPL",  name: "Bhopal Jn" },
-  { code: "NGP",  name: "Nagpur Jn" },
-  { code: "BZA",  name: "Vijayawada Jn" },
-  { code: "SBC",  name: "KSR Bengaluru" },
-  { code: "ADI",  name: "Ahmedabad Jn" },
+  { code: "MAS", name: "MGR Chennai Central" },
+  { code: "AGC", name: "Agra Cantt" },
+  { code: "GWL", name: "Gwalior Jn" },
+  { code: "BPL", name: "Bhopal Jn" },
+  { code: "NGP", name: "Nagpur Jn" },
+  { code: "BZA", name: "Vijayawada Jn" },
+  { code: "SBC", name: "KSR Bengaluru" },
+  { code: "ADI", name: "Ahmedabad Jn" },
 ];
 
 const QUOTAS = [
@@ -78,16 +108,32 @@ function App() {
   const [searchError, setSearchError] = useState("");
 
   // Backend Engine & Redis State
-  const [remaining, setRemaining] = useState(null);
+  const [remaining, setRemaining] = useState(320);
+  const [classRemaining, setClassRemaining] = useState({ "1A": 80, "2A": 80, "3A": 80, "SL": 80 });
   const [backendOnline, setBackendOnline] = useState(true);
   const [passengerName, setPassengerName] = useState("");
   const [isBooking, setIsBooking] = useState(false);
   const [bookingResult, setBookingResult] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Storm Simulation Telemetry
+  // Tatkal Rush Simulator State (1,400 Users across 40s)
   const [isStorming, setIsStorming] = useState(false);
   const [stormStats, setStormStats] = useState(null);
+  const [rushDuration, setRushDuration] = useState(40);
+  const [stormPollingInterval, setStormPollingInterval] = useState(null);
+
+  // Virtual Waiting Room & Gateway Cooldown State
+  const [waitingQueueStatus, setWaitingQueueStatus] = useState(null);
+  const [rateLimitCooldown, setRateLimitCooldown] = useState(0);
+
+  // Rate-limit countdown timer
+  useEffect(() => {
+    if (rateLimitCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setRateLimitCooldown((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [rateLimitCooldown]);
 
   // 1. Update clock every second
   useEffect(() => {
@@ -121,11 +167,13 @@ function App() {
       const res = await fetch(`${API}/api/status`);
       if (!res.ok) throw new Error("Backend offline");
       const data = await res.json();
-      setRemaining(data.remaining);
+      setRemaining(data.totalRemaining ?? data.remaining ?? 320);
+      if (data.classes) {
+        setClassRemaining(data.classes);
+      }
       setBackendOnline(true);
     } catch {
       setBackendOnline(false);
-      setRemaining(null);
     }
   }
 
@@ -209,78 +257,220 @@ function App() {
     }
   }
 
-  // Book Tatkal Ticket Handler
+  // Helper to generate confirmed e-Ticket
+  function generateConfirmedTicket(train, passenger) {
+    const randomPnr = Math.floor(2000000000 + Math.random() * 9000000000);
+    const coaches = ["B1", "B2", "B3", "B4", "B5"];
+    const berthTypes = ["Lower (LB)", "Middle (MB)", "Upper (UB)", "Side Lower (SL)"];
+    const randomCoach = coaches[Math.floor(Math.random() * coaches.length)];
+    const randomBerthNo = Math.floor(Math.random() * 64) + 1;
+    const randomBerthType = berthTypes[Math.floor(Math.random() * berthTypes.length)];
+
+    return {
+      success: true,
+      pnr: randomPnr,
+      passenger,
+      coach: `${randomCoach} - ${randomBerthNo}`,
+      berthType: randomBerthType,
+      classType: selectedClass,
+      quota,
+      train: `${train.train_number} / ${train.train_name}`,
+    };
+  }
+
+  // Book Tatkal Ticket Handler (Virtual Waiting Room Integration)
   async function handleBookTicket(train) {
-    if (!passengerName.trim()) {
-      alert("Please enter Passenger Name / User ID to reserve Tatkal seat.");
+    if (rateLimitCooldown > 0) {
+      alert(`API Gateway Cooldown active. Please wait ${rateLimitCooldown}s.`);
       return;
+    }
+
+    const trimmedPassenger =
+      passengerName.trim() || `User_${Math.floor(1000 + Math.random() * 9000)}`;
+    if (!passengerName.trim()) {
+      setPassengerName(trimmedPassenger);
     }
 
     setIsBooking(true);
     setBookingResult(null);
 
+    // 1. Open waiting room modal immediately
+    setWaitingQueueStatus({
+      inQueue: true,
+      position: "Entering...",
+      estimatedWaitSeconds: 1,
+      train,
+    });
+    setIsModalOpen(true);
+
     try {
       const res = await fetch(`${API}/api/book`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: passengerName.trim() }),
+        body: JSON.stringify({ userId: trimmedPassenger, classCode: selectedClass }),
       });
 
       const data = await res.json();
 
-      if (!res.ok) {
-        setBookingResult({ success: false, message: data.error || "Booking failed." });
-      } else if (data.won) {
-        const randomPnr = Math.floor(2000000000 + Math.random() * 9000000000);
-        const coaches = ["B1", "B2", "B3", "B4", "B5"];
-        const berthTypes = ["Lower (LB)", "Middle (MB)", "Upper (UB)", "Side Lower (SL)"];
-        const randomCoach = coaches[Math.floor(Math.random() * coaches.length)];
-        const randomBerthNo = Math.floor(Math.random() * 64) + 1;
-        const randomBerthType = berthTypes[Math.floor(Math.random() * berthTypes.length)];
-
-        setBookingResult({
-          success: true,
-          pnr: randomPnr,
-          passenger: passengerName.trim(),
-          coach: `${randomCoach} - ${randomBerthNo}`,
-          berthType: randomBerthType,
-          classType: selectedClass,
-          quota,
-          train: `${train.train_number} / ${train.train_name}`,
-        });
-      } else {
+      // Case A: 429 Too Many Requests (Gateway Rate Limiter Throttled)
+      if (res.status === 429) {
+        const retrySec = Number(data.retryAfterSeconds || res.headers.get("Retry-After") || 2);
+        setRateLimitCooldown(retrySec);
+        setWaitingQueueStatus(null);
+        setIsBooking(false);
         setBookingResult({
           success: false,
-          message: "REGRET / TATKAL QUOTA EXHAUSTED: Zero seats remaining.",
+          isRateLimited: true,
+          retryAfter: retrySec,
+          message: data.message || "Gateway rate limit exceeded. Please wait before retrying.",
         });
+        return;
       }
 
-      await fetchStatus();
-    } catch {
-      setBookingResult({ success: false, message: "Network error contacting SeatRush backend." });
-    } finally {
+      // Case B: 202 Accepted (Enqueued into Virtual Waiting Room)
+      if (res.status === 202) {
+        const jobId = data.jobId;
+        setWaitingQueueStatus({
+          inQueue: true,
+          jobId,
+          position: data.position || 1,
+          estimatedWaitSeconds: data.estimatedWaitSeconds || 1,
+          train,
+        });
+
+        // Start active polling of /api/book/status/:jobId every 350ms
+        let attempts = 0;
+        const maxAttempts = 35; // ~12 seconds maximum poll timeout
+        const pollInterval = setInterval(async () => {
+          attempts++;
+          try {
+            const statusRes = await fetch(`${API}/api/book/status/${jobId}`);
+            if (!statusRes.ok) throw new Error("Status check failed");
+            const statusData = await statusRes.json();
+
+            if (statusData.status === "COMPLETED") {
+              clearInterval(pollInterval);
+              setWaitingQueueStatus(null);
+              setIsBooking(false);
+
+              if (statusData.won) {
+                setBookingResult(generateConfirmedTicket(train, trimmedPassenger));
+              } else {
+                setBookingResult({
+                  success: false,
+                  message: "REGRET / TATKAL QUOTA EXHAUSTED: Zero seats remaining.",
+                });
+              }
+              await fetchStatus();
+            } else if (statusData.status === "QUEUED") {
+              // Update live position as queue drains
+              setWaitingQueueStatus((prev) => ({
+                ...prev,
+                position: statusData.position,
+                estimatedWaitSeconds: statusData.estimatedWaitSeconds || 1,
+              }));
+            }
+
+            if (attempts >= maxAttempts) {
+              clearInterval(pollInterval);
+              setWaitingQueueStatus(null);
+              setIsBooking(false);
+              setBookingResult({
+                success: false,
+                message: "Waiting room session timed out. Please try again.",
+              });
+            }
+          } catch {
+            clearInterval(pollInterval);
+            setWaitingQueueStatus(null);
+            setIsBooking(false);
+            setBookingResult({
+              success: false,
+              message: "Network interrupted while checking queue status.",
+            });
+          }
+        }, 350);
+
+        return;
+      }
+
+      // Case C: Direct Error
+      setWaitingQueueStatus(null);
       setIsBooking(false);
-      setIsModalOpen(true);
+      setBookingResult({
+        success: false,
+        message: data.error || "Reservation failed.",
+      });
+    } catch {
+      setWaitingQueueStatus(null);
+      setIsBooking(false);
+      setBookingResult({
+        success: false,
+        message: "Network error contacting SeatRush backend.",
+      });
     }
   }
 
-  // Storm Simulation Handler (200 Concurrent Bookings)
+  // Storm Simulation Handler (1,400 Users Staggered Across All Classes)
   async function handleRunStorm() {
     setIsStorming(true);
     setStormStats(null);
     try {
-      const startTime = performance.now();
-      const res = await fetch(`${API}/api/storm`, { method: "POST" });
-      const data = await res.json();
-      const durationMs = Math.round(performance.now() - startTime);
-
-      setStormStats({
-        ...data,
-        latencyMs: durationMs,
+      const res = await fetch(`${API}/api/storm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ users: 1400, durationSec: rushDuration || 40 }),
       });
-      setRemaining(data.remaining);
+      const data = await res.json();
+      setStormStats(data);
+      if (typeof data.remaining === "number") setRemaining(data.remaining);
+      if (data.classesRemaining) setClassRemaining(data.classesRemaining);
+
+      // Poll live rush status every 400ms while simulation is running
+      const interval = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`${API}/api/storm/status`);
+          const statusData = await statusRes.json();
+          setStormStats(statusData);
+          if (typeof statusData.remaining === "number") {
+            setRemaining(statusData.remaining);
+          }
+          if (statusData.classesRemaining) {
+            setClassRemaining(statusData.classesRemaining);
+          }
+
+          // If simulation finished, stop polling
+          if (!statusData.active && statusData.elapsedSec >= statusData.durationSec) {
+            clearInterval(interval);
+            setStormPollingInterval(null);
+            setIsStorming(false);
+          }
+        } catch {
+          // ignore transient poll error
+        }
+      }, 400);
+
+      setStormPollingInterval(interval);
     } catch {
-      alert("Failed to execute storm test. Ensure backend is running.");
+      alert("Failed to start Tatkal rush simulation. Ensure backend is running.");
+      setIsStorming(false);
+    }
+  }
+
+  // Stop Active Rush Simulation
+  async function handleStopStorm() {
+    if (stormPollingInterval) {
+      clearInterval(stormPollingInterval);
+      setStormPollingInterval(null);
+    }
+    try {
+      const res = await fetch(`${API}/api/storm/stop`, { method: "POST" });
+      const data = await res.json();
+      setStormStats(data);
+      if (typeof data.remaining === "number") setRemaining(data.remaining);
+      if (data.classesRemaining) setClassRemaining(data.classesRemaining);
+    } catch {
+      // ignore
     } finally {
       setIsStorming(false);
     }
@@ -288,12 +478,18 @@ function App() {
 
   // Inventory Reset Handler
   async function handleResetInventory() {
+    if (stormPollingInterval) {
+      clearInterval(stormPollingInterval);
+      setStormPollingInterval(null);
+    }
     try {
       const res = await fetch(`${API}/api/reset`, { method: "POST" });
       const data = await res.json();
-      setRemaining(data.remaining);
+      setRemaining(data.totalRemaining ?? data.remaining ?? 320);
+      if (data.classes) setClassRemaining(data.classes);
       setStormStats(null);
-      alert("Redis Tatkal Inventory reset to 10 tickets.");
+      setIsStorming(false);
+      alert("Redis Tatkal Inventory reset to 320 tickets (80 seats in each class: 1A, 2A, 3A, SL).");
     } catch {
       alert("Could not reset inventory.");
     }
@@ -306,7 +502,10 @@ function App() {
         {/* Top Info Bar */}
         <div className="top-utility-bar">
           <div className="utility-container">
-            <span className="live-clock font-mono">{clockString}</span>
+            <span className="live-clock font-mono">
+              <IconClock size={13} />
+              <span>{clockString}</span>
+            </span>
             <div className="accessibility-links">
               <button type="button">A-</button>
               <span>|</span>
@@ -323,7 +522,9 @@ function App() {
         <div className="main-navbar-container">
           <div className="nav-left-brand">
             <div className="seatrush-brand-logo" onClick={() => setCurrentView("home")} title="SeatRush Home">
-              <div className="brand-logo-icon">⚡</div>
+              <div className="brand-logo-icon">
+                <IconZap size={20} color="#ffffff" />
+              </div>
               <div className="brand-text">
                 <span className="brand-main">SEAT</span><span className="brand-accent">RUSH</span>
                 <span className="brand-sub">Flash-Sale Engine</span>
@@ -337,7 +538,7 @@ function App() {
               className={`nav-link-btn ${currentView === "home" ? "active" : ""}`}
               onClick={() => setCurrentView("home")}
             >
-              <span>🏠</span> HOME
+              <IconHome size={15} /> <span>HOME</span>
             </button>
             <button
               type="button"
@@ -350,7 +551,7 @@ function App() {
                 }
               }}
             >
-              <span>🚆</span> TRAINS & BOOKING
+              <IconTrain size={15} /> <span>TRAINS &amp; BOOKING</span>
             </button>
             <button
               type="button"
@@ -366,7 +567,7 @@ function App() {
                 }, 100);
               }}
             >
-              <span>⚡</span> 200-USER SIMULATOR
+              <IconActivity size={15} /> <span>STRESS SIMULATOR</span>
             </button>
           </nav>
 
@@ -376,7 +577,8 @@ function App() {
               <span>{backendOnline ? "REDIS LIVE" : "BACKEND OFFLINE"}</span>
             </div>
             <button type="button" className="nav-login-btn">
-              LOGIN
+              <IconUser size={14} />
+              <span>LOGIN</span>
             </button>
           </div>
         </div>
@@ -393,10 +595,10 @@ function App() {
                 {/* Header Tabs */}
                 <div className="card-top-tabs">
                   <button type="button" className="tab-item active">
-                    <span className="tab-icon">🎫</span> PNR STATUS
+                    <IconTicket size={15} /> <span>PNR STATUS</span>
                   </button>
                   <button type="button" className="tab-item">
-                    <span className="tab-icon">📋</span> CHARTS / VACANCY
+                    <IconFileText size={15} /> <span>CHARTS / VACANCY</span>
                   </button>
                 </div>
 
@@ -404,9 +606,9 @@ function App() {
                   <h2 className="card-main-heading">BOOK TICKET</h2>
 
                   <form onSubmit={handleSearchTrains} className="form-fields-stack">
-                    {/* From Station with Navigation Icon */}
+                    {/* From Station with MapPin Icon */}
                     <div className="input-with-icon">
-                      <span className="field-icon">➔</span>
+                      <span className="field-icon"><IconMapPin size={17} /></span>
                       <div className="field-content">
                         <label className="input-floating-label">From</label>
                         <select
@@ -431,13 +633,13 @@ function App() {
                         onClick={handleSwapStations}
                         title="Swap Origin & Destination"
                       >
-                        ⇄
+                        <IconSwap size={15} />
                       </button>
                     </div>
 
                     {/* To Station with Location Pin */}
                     <div className="input-with-icon">
-                      <span className="field-icon">📍</span>
+                      <span className="field-icon"><IconMapPin size={17} /></span>
                       <div className="field-content">
                         <label className="input-floating-label">To</label>
                         <select
@@ -456,7 +658,7 @@ function App() {
 
                     {/* Date Picker */}
                     <div className="input-with-icon">
-                      <span className="field-icon">📅</span>
+                      <span className="field-icon"><IconCalendar size={17} /></span>
                       <div className="field-content">
                         <label className="input-floating-label">DD/MM/YYYY *</label>
                         <input
@@ -471,7 +673,7 @@ function App() {
 
                     {/* Classes Dropdown with Briefcase */}
                     <div className="input-with-icon">
-                      <span className="field-icon">💼</span>
+                      <span className="field-icon"><IconBriefcase size={17} /></span>
                       <div className="field-content">
                         <label className="input-floating-label">Class</label>
                         <select
@@ -490,7 +692,7 @@ function App() {
 
                     {/* Quota Dropdown with Grid */}
                     <div className="input-with-icon">
-                      <span className="field-icon">⊞</span>
+                      <span className="field-icon"><IconGrid size={17} /></span>
                       <div className="field-content">
                         <label className="input-floating-label">Quota</label>
                         <select
@@ -537,7 +739,8 @@ function App() {
 
                     {/* Big Orange Search Button */}
                     <button type="submit" className="irctc-search-btn" disabled={isSearching}>
-                      {isSearching ? "Searching Trains…" : "Search Trains"}
+                      <IconSearch size={18} />
+                      <span>{isSearching ? "Searching Trains…" : "Search Trains"}</span>
                     </button>
                   </form>
                 </div>
@@ -570,12 +773,13 @@ function App() {
               className="modify-search-btn"
               onClick={() => setCurrentView("home")}
             >
-              ← Modify Search
+              <IconArrowLeft size={15} />
+              <span>Modify Search</span>
             </button>
 
             <div className="route-summary-pill">
               <span className="pill-station">{source}</span>
-              <span className="pill-arrow">➔</span>
+              <IconArrowRight size={13} className="pill-arrow" />
               <span className="pill-station">{destination}</span>
               <span className="pill-pipe">|</span>
               <span className="pill-date">{journeyDate}</span>
@@ -592,6 +796,25 @@ function App() {
 
           {searchError && <div className="search-warning-banner">{searchError}</div>}
 
+          {/* Active Tatkal Rush Live Alert Banner */}
+          {isStorming && (
+            <div className="rush-active-callout">
+              <span className="live-indicator-dot"></span>
+              <div className="rush-callout-text">
+                <div className="rush-callout-badge">
+                  <IconActivity size={13} />
+                  <span>MULTI-CLASS CONCURRENCY WAVE ACTIVE</span>
+                </div>
+                <div className="rush-callout-desc">
+                  1,400 concurrent simulated requests are arriving randomly across {rushDuration}s (80 seats in 1A, 2A, 3A, SL &mdash; 320 seats total).
+                </div>
+                <div className="rush-subtext">
+                  Total Remaining: <strong>{remaining ?? 320} / 320</strong> (1A: {classRemaining["1A"] ?? 80} | 2A: {classRemaining["2A"] ?? 80} | 3A: {classRemaining["3A"] ?? 80} | SL: {classRemaining["SL"] ?? 80}) &bull; Pick any class and click <strong>&quot;Book Tatkal&quot;</strong> to compete!
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Dynamic Train Cards */}
           <div className="train-cards-stack">
             {trainsList.map((train) => (
@@ -602,7 +825,10 @@ function App() {
                     <span className="train-name">
                       {train.train_number} / {train.train_name}
                     </span>
-                    <span className="train-type-tag">{train.train_type || "SUPERFAST SPECIAL"}</span>
+                    <span className="train-type-tag">
+                      <IconTrain size={12} />
+                      <span>{train.train_type || "SUPERFAST SPECIAL"}</span>
+                    </span>
                   </div>
                   <div className="train-days">Runs On: {train.runs_on || "M T W T F S S"}</div>
                 </div>
@@ -630,14 +856,11 @@ function App() {
                   </div>
                 </div>
 
-                {/* Classes with Real-time Redis Seat Counter */}
+                {/* Classes with Real-time Redis Seat Counters for ALL tiers */}
                 <div className="train-classes-container">
                   <div className="classes-grid">
                     {CLASSES.filter((c) => c.id !== "ALL").map((cls) => {
-                      const isLiveClass = cls.id === "3A";
-                      const availableCount = isLiveClass
-                        ? (remaining ?? 10)
-                        : (train.classes?.find((c) => c.id === cls.id)?.availableSeats ?? 42);
+                      const count = classRemaining[cls.id] ?? 80;
 
                       return (
                         <div
@@ -650,20 +873,14 @@ function App() {
                             <span className="chip-fare">{cls.fare}</span>
                           </div>
                           <div className="chip-status">
-                            {isLiveClass ? (
-                              remaining === null ? (
-                                <span style={{ color: "#94a3b8" }}>Connecting…</span>
-                              ) : remaining > 0 ? (
-                                <span className="status-available">CURR_AVL - 00{remaining}</span>
-                              ) : (
-                                <span className="status-soldout">REGRET / WL</span>
-                              )
+                            {count > 0 ? (
+                              <span className="status-available">CURR_AVL - 00{count}</span>
                             ) : (
-                              <span className="status-available">AVAILABLE - {availableCount}</span>
+                              <span className="status-soldout">REGRET / WL</span>
                             )}
-                            {isLiveClass && (
-                              <span className="live-sync-indicator font-mono">REDIS LIVE</span>
-                            )}
+                            <span className="live-sync-indicator font-mono">
+                              <IconZap size={10} /> REDIS LIVE
+                            </span>
                           </div>
                         </div>
                       );
@@ -676,27 +893,39 @@ function App() {
                   <div className="selected-quota-summary">
                     Selected Class: <strong>{selectedClass}</strong> | Quota: <strong>{quota}</strong> |{" "}
                     Live Tatkal Berth Balance:{" "}
-                    <strong style={{ color: remaining > 0 ? "#15803d" : "#dc2626" }}>
-                      {remaining ?? "…"}
+                    <strong style={{ color: (classRemaining[selectedClass] ?? 0) > 0 ? "#15803d" : "#dc2626" }}>
+                      {classRemaining[selectedClass] !== undefined ? `${classRemaining[selectedClass]} / 80 Seats` : "…"}
                     </strong>
+                    {" "}(Total 320 across all Tiers: <strong>{remaining ?? 320}</strong> left)
                   </div>
 
-                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                    <input
-                      type="text"
-                      placeholder="Passenger Name / ID"
-                      value={passengerName}
-                      onChange={(e) => setPassengerName(e.target.value)}
-                      className="form-control"
-                      style={{ width: "220px" }}
-                    />
+                  <div className="passenger-booking-group">
+                    <div className="passenger-input-wrapper">
+                      <IconUser size={15} className="passenger-input-icon" />
+                      <input
+                        type="text"
+                        placeholder="Passenger Name / ID"
+                        value={passengerName}
+                        onChange={(e) => setPassengerName(e.target.value)}
+                        className="passenger-input-box"
+                      />
+                    </div>
                     <button
                       type="button"
                       className="book-tatkal-btn"
                       onClick={() => handleBookTicket(train)}
-                      disabled={isBooking || remaining === 0 || !backendOnline}
+                      disabled={isBooking || (classRemaining[selectedClass] ?? 0) === 0 || !backendOnline || rateLimitCooldown > 0}
                     >
-                      {isBooking ? "Reserving…" : "Book Tatkal Now"}
+                      <IconTicket size={15} />
+                      <span>
+                        {rateLimitCooldown > 0
+                          ? `Cooldown (${rateLimitCooldown}s)`
+                          : isBooking
+                            ? "Entering Waiting Room…"
+                            : (classRemaining[selectedClass] ?? 0) === 0
+                              ? `${selectedClass} Sold Out`
+                              : `Book ${selectedClass} Tatkal`}
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -704,61 +933,147 @@ function App() {
             ))}
           </div>
 
-          {/* 4. Concurrency Stress-Test Dashboard right below the Train Card */}
+          {/* 4. Concurrency Stress-Test Dashboard (1,400 Users across All Classes) */}
           <section className="simulator-panel">
             <div className="simulator-header">
               <div className="sim-title">
-                <span>⚡</span> Tatkal Concurrency Stress Simulator (Tatkal Rush Engine)
+                <IconActivity size={18} />
+                <span>Multi-Class Tatkal Stress Simulator (1,400 Requests across 320 Seats)</span>
               </div>
               <div className="sim-controls">
-                <button
-                  type="button"
-                  className="sim-btn"
-                  onClick={handleRunStorm}
-                  disabled={isStorming || !backendOnline}
-                >
-                  {isStorming ? "Simulating Network Storm…" : "Simulate 200 Tatkal Rush Users"}
-                </button>
+                <div className="rush-duration-select">
+                  <label>Duration:</label>
+                  <select
+                    value={rushDuration}
+                    onChange={(e) => setRushDuration(Number(e.target.value))}
+                    disabled={isStorming}
+                    className="rush-select"
+                  >
+                    <option value={20}>20s (Fast Wave)</option>
+                    <option value={40}>40s (Target: 1,400 Users over 40s)</option>
+                    <option value={60}>60s (Extended Wave)</option>
+                  </select>
+                </div>
+
+                {!isStorming ? (
+                  <button
+                    type="button"
+                    className="sim-btn sim-btn-rush"
+                    onClick={handleRunStorm}
+                    disabled={!backendOnline}
+                  >
+                    <IconPlay size={13} />
+                    <span>Start 1,400-User Multi-Class Rush</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="sim-btn sim-btn-stop"
+                    onClick={handleStopStorm}
+                  >
+                    <IconSquare size={13} />
+                    <span>Stop Simulation ({stormStats?.elapsedSec || 0}s / {rushDuration}s)</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   className="sim-btn sim-btn-danger"
                   onClick={handleResetInventory}
                 >
-                  Reset Inventory (10 Seats)
+                  <IconRefresh size={13} />
+                  <span>Reset Inventory (80 Each / 320 Total)</span>
                 </button>
               </div>
             </div>
 
+            {isStorming && (
+              <div className="rush-active-callout">
+                <span className="live-indicator-dot"></span>
+                <div className="rush-callout-text">
+                  <div className="rush-callout-badge">
+                    <IconActivity size={13} />
+                    <span>MULTI-CLASS TATKAL RUSH IN PROGRESS</span>
+                  </div>
+                  <div className="rush-callout-desc">
+                    1,400 virtual bot passengers are entering the waiting room randomly over {rushDuration}s across all 4 tiers (1A, 2A, 3A, SL)!
+                  </div>
+                  <div className="rush-subtext">
+                    Total 320 seats (80 per tier: 1A, 2A, 3A, SL). Pick any class above and click <strong>&quot;Book Tatkal Now&quot;</strong> to compete against the bots!
+                  </div>
+                </div>
+              </div>
+            )}
+
             <p style={{ fontSize: "13px", color: "#cbd5e1", lineHeight: "1.5" }}>
-              Fires 200 concurrent HTTP reservations against the Redis Lua atomic engine in parallel.
-              Guarantees zero overselling under extreme race conditions.
+              Simulates 1,400 concurrent requests arriving randomly over {rushDuration} seconds across all 4 travel classes (1A, 2A, 3A, SL).
+              Each request targets exactly 1 ticket in a randomly selected class. Zero overselling is guaranteed independently per class (80 seats each).
             </p>
 
             {stormStats && (
               <div className="telemetry-grid">
                 <div className="telemetry-card">
-                  <div className="telemetry-label">Concurrent Users</div>
-                  <div className="telemetry-value font-mono">{stormStats.users}</div>
-                </div>
-                <div className="telemetry-card">
-                  <div className="telemetry-label">Confirmed Bookings</div>
-                  <div className="telemetry-value font-mono" style={{ color: "#4ade80" }}>
-                    {stormStats.wins}
+                  <div className="telemetry-label">
+                    <IconUsers size={14} /> Requests Dispatched
                   </div>
-                </div>
-                <div className="telemetry-card">
-                  <div className="telemetry-label">Quota Exhausted (Lost)</div>
-                  <div className="telemetry-value font-mono" style={{ color: "#f87171" }}>
-                    {stormStats.losses}
+                  <div className="telemetry-value font-mono">
+                    {stormStats.enqueuedUsers ?? stormStats.users ?? 0} / {stormStats.totalUsers || 1400}
                   </div>
+                  <div className="telemetry-sub">{stormStats.queueLength || 0} currently in waiting room</div>
                 </div>
                 <div className="telemetry-card">
-                  <div className="telemetry-label">Zero Oversell Check</div>
+                  <div className="telemetry-label">
+                    <IconTicket size={14} /> Total Seats Remaining
+                  </div>
                   <div
                     className="telemetry-value font-mono"
-                    style={{ color: stormStats.ok ? "#4ade80" : "#ef4444" }}
+                    style={{
+                      color:
+                        (stormStats.remaining ?? remaining) > 0
+                          ? "#4ade80"
+                          : "#f87171",
+                    }}
                   >
-                    {stormStats.ok ? "PASSED (0 OVERSELL)" : "FAILED"}
+                    {stormStats.remaining ?? remaining ?? 0} / 320
+                  </div>
+                  <div className="telemetry-sub">
+                    1A: {classRemaining["1A"] ?? 0} | 2A: {classRemaining["2A"] ?? 0} | 3A: {classRemaining["3A"] ?? 0} | SL: {classRemaining["SL"] ?? 0}
+                  </div>
+                </div>
+                <div className="telemetry-card">
+                  <div className="telemetry-label">
+                    <IconZap size={14} /> Bot Confirmed Bookings
+                  </div>
+                  <div className="telemetry-value font-mono" style={{ color: "#38bdf8" }}>
+                    {stormStats.botWins ?? stormStats.wins ?? 0}
+                  </div>
+                  <div className="telemetry-sub">
+                    {stormStats.classWins
+                      ? `1A: ${stormStats.classWins["1A"] || 0}, 2A: ${stormStats.classWins["2A"] || 0}, 3A: ${stormStats.classWins["3A"] || 0}, SL: ${stormStats.classWins["SL"] || 0}`
+                      : "Across all 4 classes"}
+                  </div>
+                </div>
+                <div className="telemetry-card highlight-card">
+                  <div className="telemetry-label">
+                    <IconAward size={14} /> Human Bookings (You!)
+                  </div>
+                  <div
+                    className="telemetry-value font-mono"
+                    style={{
+                      color: (stormStats.humanWins || 0) > 0 ? "#4ade80" : "#fbbf24",
+                    }}
+                  >
+                    <span>{stormStats.humanWins || 0}</span>
+                    {stormStats.humanWins > 0 && (
+                      <span className="human-win-badge">
+                        <IconCheckCircle size={12} /> SECURED
+                      </span>
+                    )}
+                  </div>
+                  <div className="telemetry-sub">
+                    {stormStats.humanWins > 0
+                      ? "You beat the bots in your tier!"
+                      : "Book any tier above to join queue"}
                   </div>
                 </div>
               </div>
@@ -767,24 +1082,98 @@ function App() {
         </main>
       )}
 
-      {/* 5. Booking Confirmation Modal (Clean IRCTC e-Ticket) */}
-      {isModalOpen && bookingResult && (
-        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+      {/* 5. Booking / Waiting Room Modal */}
+      {isModalOpen && (
+        <div
+          className="modal-overlay"
+          onClick={() => !waitingQueueStatus?.inQueue && setIsModalOpen(false)}
+        >
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title">
-                {bookingResult.success ? "🎉 Tatkal Ticket Confirmed!" : "Booking Status"}
+                {waitingQueueStatus?.inQueue ? (
+                  <>
+                    <IconClock size={19} color="#2563eb" />
+                    <span>Tatkal Virtual Waiting Room</span>
+                  </>
+                ) : bookingResult?.success ? (
+                  <>
+                    <IconCheckCircle size={19} color="#16a34a" />
+                    <span>Tatkal Ticket Confirmed</span>
+                  </>
+                ) : (
+                  <>
+                    <IconAlertTriangle size={19} color="#dc2626" />
+                    <span>Booking Status</span>
+                  </>
+                )}
               </div>
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() => setIsModalOpen(false)}
-              >
-                &times;
-              </button>
+              {!waitingQueueStatus?.inQueue && (
+                <button
+                  type="button"
+                  className="modal-close"
+                  onClick={() => setIsModalOpen(false)}
+                >
+                  <IconX size={18} />
+                </button>
+              )}
             </div>
 
-            {bookingResult.success ? (
+            {/* View A: Live Virtual Waiting Room */}
+            {waitingQueueStatus?.inQueue ? (
+              <div className="waiting-room-container">
+                <div className="waiting-pulse-header">
+                  <span className="pulse-indicator"></span>
+                  <span className="pulse-text">HIGH-CONCURRENCY TATKAL FLASH SALE</span>
+                </div>
+
+                <div className="queue-box">
+                  <div className="queue-label">YOUR LIVE POSITION IN LINE</div>
+                  <div className="queue-number font-mono">
+                    #{waitingQueueStatus.position}
+                  </div>
+                  <div className="queue-bar-track">
+                    <div
+                      className="queue-bar-fill"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          Math.max(10, 100 - (Number(waitingQueueStatus.position) || 1) * 3)
+                        )}%`,
+                      }}
+                    ></div>
+                  </div>
+                </div>
+
+                <div className="waiting-stats-grid">
+                  <div className="waiting-stat-cell">
+                    <span className="stat-name">Estimated Wait:</span>
+                    <span className="stat-val font-mono">~{waitingQueueStatus.estimatedWaitSeconds}s</span>
+                  </div>
+                  <div className="waiting-stat-cell">
+                    <span className="stat-name">Queue Engine:</span>
+                    <span className="stat-val">Redis ZSET (FIFO)</span>
+                  </div>
+                  <div className="waiting-stat-cell">
+                    <span className="stat-name">Train:</span>
+                    <span className="stat-val">{waitingQueueStatus.train?.train_number}</span>
+                  </div>
+                  <div className="waiting-stat-cell">
+                    <span className="stat-name">Passenger:</span>
+                    <span className="stat-val">{passengerName}</span>
+                  </div>
+                </div>
+
+                <div className="waiting-footer-note">
+                  <div className="spinner-dots">
+                    <span></span><span></span><span></span>
+                  </div>
+                  <p>
+                    Please hold on. Your booking request is being evaluated atomically by Redis background workers.
+                  </p>
+                </div>
+              </div>
+            ) : bookingResult?.success ? (
               <div className="ticket-receipt">
                 <div className="ticket-pnr-row">
                   <div>
@@ -793,7 +1182,9 @@ function App() {
                     </div>
                     <div className="pnr-number font-mono">{bookingResult.pnr}</div>
                   </div>
-                  <span className="ticket-badge-confirmed">CONFIRMED (CNF)</span>
+                  <span className="ticket-badge-confirmed">
+                    <IconCheckCircle size={13} /> CONFIRMED (CNF)
+                  </span>
                 </div>
 
                 <div className="ticket-detail-grid">
@@ -816,11 +1207,43 @@ function App() {
                     <strong>Quota:</strong> {bookingResult.quota}
                   </div>
                 </div>
+
+                <div className="ticket-receipt-actions">
+                  <button
+                    type="button"
+                    className="ticket-action-btn print-btn"
+                    onClick={() => window.print()}
+                  >
+                    <IconPrinter size={14} />
+                    <span>Print e-Ticket</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="ticket-action-btn close-btn"
+                    onClick={() => setIsModalOpen(false)}
+                  >
+                    <span>Done</span>
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="ticket-error">
-                <p style={{ fontWeight: 700, marginBottom: "6px" }}>Reservation Failed</p>
-                <p style={{ fontSize: "13px" }}>{bookingResult.message}</p>
+                {bookingResult?.isRateLimited ? (
+                  <div className="rate-limit-card">
+                    <div className="rate-limit-title">
+                      <IconShield size={16} /> Gateway Rate Limit Active
+                    </div>
+                    <p className="rate-limit-desc">{bookingResult.message}</p>
+                    <div className="rate-limit-badge font-mono">
+                      Cooldown: {rateLimitCooldown}s
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p style={{ fontWeight: 700, marginBottom: "6px" }}>Reservation Failed</p>
+                    <p style={{ fontSize: "13px" }}>{bookingResult?.message}</p>
+                  </>
+                )}
               </div>
             )}
           </div>
