@@ -5,6 +5,7 @@ const Redis = require("ioredis");
 const pool = require("./db");
 const { createRateLimiter } = require("./gateway");
 const WaitingRoomQueue = require("./queue");
+const PersistencePipeline = require("./persistence");
 
 const PORT = process.env.PORT || 3000;
 const ALL_CLASSES = ["1A", "2A", "3A", "SL"];
@@ -78,8 +79,20 @@ const userBookingLimiter = createRateLimiter(redis, {
   prefix: "rl:user:book",
 });
 
-// Initialize Virtual Waiting Room Queue
+// Initialize Virtual Waiting Room Queue & Persistence Pipeline
 const waitingQueue = new WaitingRoomQueue(redis, BOOK_LUA, TICKETS_KEY);
+const persistencePipeline = new PersistencePipeline(redis);
+
+// Hook: Every confirmed ticket in Redis is enqueued into Redis Streams for async MySQL persistence
+waitingQueue.onBookingProcessed(async (event) => {
+  if (event.won) {
+    try {
+      await persistencePipeline.enqueueBooking(event);
+    } catch (err) {
+      console.error("[Persistence Stream Enqueue Callback Error]:", err.message);
+    }
+  }
+});
 
 // General limiter for browsing & search (Burst capacity of 50, refills 10 tokens/sec)
 const generalRateLimiter = createRateLimiter(redis, {
@@ -209,12 +222,28 @@ app.post(
   userBookingLimiter,
   async (req, res) => {
     try {
-      const { userId, classCode = "3A" } = req.body || {};
+      const {
+        userId,
+        classCode = "3A",
+        trainId,
+        journeyDate,
+        fromStation,
+        toStation,
+        quotaCode,
+        passengers,
+      } = req.body || {};
       if (!userId) {
         return res.status(400).json({ error: "userId is required" });
       }
 
-      const queueResult = await waitingQueue.enqueue(userId, classCode);
+      const queueResult = await waitingQueue.enqueue(userId, classCode, {
+        trainId,
+        journeyDate,
+        fromStation,
+        toStation,
+        quotaCode,
+        passengers,
+      });
       res.status(202).json({ ...queueResult, classCode });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -228,6 +257,41 @@ app.get("/api/book/status/:jobId", async (req, res) => {
     const { jobId } = req.params;
     const status = await waitingQueue.getStatus(jobId);
     res.json(status);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. PNR Status Lookup with 15-Minute Expiration Verification
+app.get("/api/pnr/:pnrNumber", async (req, res) => {
+  try {
+    const { pnrNumber } = req.params;
+    if (!/^\d{10}$/.test(pnrNumber)) {
+      return res.status(400).json({
+        error: "Invalid 10-digit PNR format. PNR must be exactly 10 numeric digits.",
+      });
+    }
+
+    const booking = await persistencePipeline.getBookingByPnr(pnrNumber);
+    if (!booking) {
+      return res.status(404).json({
+        error: "PNR not found or ticket expired (>15 minutes old).",
+        vanished: true,
+      });
+    }
+
+    res.json(booking);
+  } catch (err) {
+    console.error("[PNR Lookup Error]:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Persistence Pipeline Telemetry
+app.get("/api/persistence/telemetry", async (_req, res) => {
+  try {
+    const telemetry = await persistencePipeline.getTelemetry();
+    res.json(telemetry);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -356,12 +420,14 @@ app.post("/api/reset", async (_req, res) => {
     rushSimulator.stop();
     await resetAllInventory();
     await waitingQueue.clear();
+    await persistencePipeline.reset();
     const inv = await getLiveInventory();
     res.json({
       remaining: inv.totalRemaining,
       totalRemaining: inv.totalRemaining,
       classes: inv.classes,
       queue: "cleared",
+      database: "purged",
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -434,11 +500,15 @@ app.post("/api/storm/stop", async (_req, res) => {
 async function start() {
   await resetAllInventory();
   await waitingQueue.clear();
+  await persistencePipeline.initStreamGroup();
+  persistencePipeline.startWorker(50, 100);
+  persistencePipeline.startSweeper(30000);
   waitingQueue.startWorker(25, 50); // Process 25 bookings every 50ms (500/sec)
 
   const server = app.listen(PORT, "0.0.0.0", 4096, () => {
     console.log(`API listening on http://localhost:${PORT}`);
     console.log(`Redis ${REDIS_URL}; Initial Tickets: ${TOTAL_INITIAL_TICKETS} (80 seats in each class: 1A, 2A, 3A, SL)`);
+    console.log(`[Persistence Pipeline] Active with Redis Streams & 15-minute TTL Sweeper.`);
   });
   server.maxConnections = 50000;
   server.keepAliveTimeout = 65000;

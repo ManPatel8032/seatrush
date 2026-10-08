@@ -19,25 +19,39 @@ class WaitingRoomQueue {
     this.bookLua = bookLuaScript;
     this.ticketsKey = ticketsKey;
     this.workerRunning = false;
+    this.callbacks = [];
   }
 
   /**
    * Enqueue a user's booking attempt in the waiting room for a specific class
    */
-  async enqueue(userId, classCode = "3A") {
+  async enqueue(userId, classCode = "3A", metadata = {}) {
     const jobId = crypto.randomUUID();
     const now = Date.now();
     const jobKey = `${JOB_PREFIX}${jobId}`;
 
-    // Atomic pipeline: store job info + add to Sorted Set + get initial position
-    const pipeline = this.redis.pipeline();
-    pipeline.hset(jobKey, {
+    const jobData = {
       jobId,
       userId,
       classCode,
       status: "QUEUED",
       createdAt: now,
-    });
+    };
+
+    if (metadata.trainId) jobData.trainId = String(metadata.trainId);
+    if (metadata.journeyDate) jobData.journeyDate = String(metadata.journeyDate);
+    if (metadata.fromStation) jobData.fromStation = String(metadata.fromStation);
+    if (metadata.toStation) jobData.toStation = String(metadata.toStation);
+    if (metadata.quotaCode) jobData.quotaCode = String(metadata.quotaCode);
+    if (metadata.passengers) {
+      jobData.passengers = typeof metadata.passengers === "string" 
+        ? metadata.passengers 
+        : JSON.stringify(metadata.passengers);
+    }
+
+    // Atomic pipeline: store job info + add to Sorted Set + get initial position
+    const pipeline = this.redis.pipeline();
+    pipeline.hset(jobKey, jobData);
     pipeline.expire(jobKey, JOB_TTL_SEC);
     pipeline.zadd(QUEUE_KEY, now, jobId);
     pipeline.zrank(QUEUE_KEY, jobId);
@@ -68,11 +82,35 @@ class WaitingRoomQueue {
     }
 
     if (jobData.status === "COMPLETED") {
+      // Guard: If won is true but PNR has not yet attached, treat as QUEUED position 1
+      if (jobData.won === "true" && !jobData.pnr) {
+        return {
+          status: "QUEUED",
+          jobId,
+          classCode: jobData.classCode || "3A",
+          position: 1,
+          estimatedWaitSeconds: 1,
+        };
+      }
+
+      let passengers = null;
+      if (jobData.passengers) {
+        try {
+          passengers = JSON.parse(jobData.passengers);
+        } catch (_) {}
+      }
+
       return {
         status: "COMPLETED",
         won: jobData.won === "true",
         classCode: jobData.classCode || "3A",
         processedAt: Number(jobData.processedAt),
+        pnr: jobData.pnr || null,
+        coach: jobData.coach || null,
+        berthNumber: jobData.berthNumber ? Number(jobData.berthNumber) : null,
+        berthType: jobData.berthType || null,
+        passengers,
+        totalFare: jobData.totalFare ? Number(jobData.totalFare) : null,
       };
     }
 
@@ -119,28 +157,48 @@ class WaitingRoomQueue {
             const result = await this.redis.eval(this.bookLua, 1, targetKey);
             const won = Number(result) === 1;
 
-            // Update job outcome in Redis
+            // Parse passengers if provided in job
+            let parsedPassengers = null;
+            if (job.passengers) {
+              try {
+                parsedPassengers = JSON.parse(job.passengers);
+              } catch (_) {}
+            }
+
+            const eventData = {
+              jobId,
+              userId: job.userId,
+              classCode,
+              won,
+              trainId: job.trainId ? Number(job.trainId) : 1,
+              journeyDate: job.journeyDate || null,
+              fromStation: job.fromStation || "NDLS",
+              toStation: job.toStation || "MMCT",
+              quotaCode: job.quotaCode || "TQ",
+              passengers: parsedPassengers,
+              processedAt: Date.now(),
+            };
+
+            // Notify process listeners (persistence pipeline sets PNR and berths)
+            if (this.callbacks && this.callbacks.length > 0) {
+              for (const cb of this.callbacks) {
+                try {
+                  await Promise.resolve(cb(eventData)).catch((cbErr) => {
+                    console.error("[Queue Callback Error]:", cbErr.message);
+                  });
+                } catch (cbErr) {
+                  console.error("[Queue Callback Error]:", cbErr.message);
+                }
+              }
+            }
+
+            // Mark job outcome in Redis AFTER listeners have enriched the job with PNR/berths
             await this.redis.hset(jobKey, {
               status: "COMPLETED",
               won: won ? "true" : "false",
               processedAt: Date.now(),
             });
             await this.redis.expire(jobKey, JOB_TTL_SEC);
-
-            // Notify process listeners (for simulation tracking & metrics)
-            if (this.processCallback) {
-              try {
-                this.processCallback({
-                  jobId,
-                  userId: job.userId,
-                  classCode,
-                  won,
-                  processedAt: Date.now(),
-                });
-              } catch (cbErr) {
-                console.error("[Queue Callback Error]:", cbErr.message);
-              }
-            }
           }
         }
       } catch (err) {
@@ -160,7 +218,8 @@ class WaitingRoomQueue {
    * Register a listener for each processed booking job
    */
   onBookingProcessed(callback) {
-    this.processCallback = callback;
+    if (!this.callbacks) this.callbacks = [];
+    this.callbacks.push(callback);
   }
 
   /**

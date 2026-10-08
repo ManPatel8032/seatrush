@@ -129,7 +129,9 @@ CREATE TABLE bookings (
     FOREIGN KEY (class_code) REFERENCES travel_classes(code),
     FOREIGN KEY (quota_code) REFERENCES quotas(code),
     INDEX idx_pnr (pnr_number),
-    INDEX idx_journey (train_id, journey_date)
+    INDEX idx_journey (train_id, journey_date),
+    INDEX idx_bookings_booked_at (booked_at),
+    INDEX idx_bookings_pnr_active (pnr_number, booked_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Individual Passengers per Booking (1 to 4 Passengers)

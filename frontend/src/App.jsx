@@ -126,6 +126,14 @@ function App() {
   const [waitingQueueStatus, setWaitingQueueStatus] = useState(null);
   const [rateLimitCooldown, setRateLimitCooldown] = useState(0);
 
+  // PNR Status Search & 15-Minute Expiration State
+  const [pnrSearch, setPnrSearch] = useState("");
+  const [pnrLoading, setPnrLoading] = useState(false);
+  const [pnrError, setPnrError] = useState("");
+  const [pnrTicket, setPnrTicket] = useState(null);
+  const [lastBookedPnr, setLastBookedPnr] = useState("");
+  const [pnrTtlSeconds, setPnrTtlSeconds] = useState(null);
+
   // Rate-limit countdown timer
   useEffect(() => {
     if (rateLimitCooldown <= 0) return;
@@ -134,6 +142,23 @@ function App() {
     }, 1000);
     return () => clearInterval(timer);
   }, [rateLimitCooldown]);
+
+  // PNR 15-Minute TTL Live Countdown Effect
+  useEffect(() => {
+    if (pnrTtlSeconds === null || pnrTtlSeconds <= 0) return;
+    const interval = setInterval(() => {
+      setPnrTtlSeconds((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setPnrTicket(null);
+          setPnrError("This ticket has reached its 15-minute TTL and automatically vanished from the database.");
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [pnrTtlSeconds]);
 
   // 1. Update clock every second
   useEffect(() => {
@@ -307,7 +332,23 @@ function App() {
       const res = await fetch(`${API}/api/book`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: trimmedPassenger, classCode: selectedClass }),
+        body: JSON.stringify({
+          userId: trimmedPassenger,
+          classCode: selectedClass,
+          trainId: train.train_id || 1,
+          journeyDate,
+          fromStation: source,
+          toStation: destination,
+          quotaCode: quota,
+          passengers: [
+            {
+              name: trimmedPassenger,
+              age: 28,
+              gender: "M",
+              berthPreference: "NO_PREF",
+            },
+          ],
+        }),
       });
 
       const data = await res.json();
@@ -349,12 +390,31 @@ function App() {
             const statusData = await statusRes.json();
 
             if (statusData.status === "COMPLETED") {
+              // If won but server PNR is still attaching, continue polling
+              if (statusData.won && !statusData.pnr && attempts < maxAttempts) {
+                return;
+              }
+
               clearInterval(pollInterval);
               setWaitingQueueStatus(null);
               setIsBooking(false);
 
               if (statusData.won) {
-                setBookingResult(generateConfirmedTicket(train, trimmedPassenger));
+                const realPnr = statusData.pnr;
+                if (realPnr) {
+                  setLastBookedPnr(realPnr);
+                  setPnrSearch(realPnr);
+                }
+                setBookingResult({
+                  success: true,
+                  pnr: realPnr,
+                  passenger: trimmedPassenger,
+                  coach: statusData.coach ? `${statusData.coach} - ${statusData.berthNumber || 1}` : "B4 - 21",
+                  berthType: statusData.berthType || "LOWER",
+                  classType: selectedClass,
+                  quota,
+                  train: `${train.train_number} / ${train.train_name}`,
+                });
               } else {
                 setBookingResult({
                   success: false,
@@ -408,6 +468,39 @@ function App() {
         success: false,
         message: "Network error contacting SeatRush backend.",
       });
+    }
+  }
+
+  // PNR Status Enquiry Handler
+  async function handlePnrSearch(searchPnr = pnrSearch) {
+    const cleanPnr = (searchPnr || "").trim();
+    if (!cleanPnr) {
+      setPnrError("Please enter a 10-digit PNR number.");
+      return;
+    }
+    if (!/^\d{10}$/.test(cleanPnr)) {
+      setPnrError("Invalid PNR format. PNR must be exactly 10 numeric digits.");
+      return;
+    }
+
+    setPnrLoading(true);
+    setPnrError("");
+    try {
+      const res = await fetch(`${API}/api/pnr/${cleanPnr}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setPnrTicket(null);
+        setPnrTtlSeconds(null);
+        setPnrError(data.error || "PNR not found or ticket expired (>15 minutes old).");
+      } else {
+        setPnrTicket(data);
+        setPnrTtlSeconds(data.ttlRemainingSeconds);
+        setPnrSearch(cleanPnr);
+      }
+    } catch (err) {
+      setPnrError("Failed to connect to backend server: " + err.message);
+    } finally {
+      setPnrLoading(false);
     }
   }
 
@@ -555,6 +648,19 @@ function App() {
             </button>
             <button
               type="button"
+              className={`nav-link-btn ${currentView === "pnr" ? "active" : ""}`}
+              onClick={() => {
+                setCurrentView("pnr");
+                if (lastBookedPnr) {
+                  setPnrSearch(lastBookedPnr);
+                  if (!pnrTicket) handlePnrSearch(lastBookedPnr);
+                }
+              }}
+            >
+              <IconTicket size={15} /> <span>PNR STATUS</span>
+            </button>
+            <button
+              type="button"
               className="nav-link-btn"
               onClick={() => {
                 if (currentView !== "results") {
@@ -594,8 +700,21 @@ function App() {
               <div className="booking-card-floating">
                 {/* Header Tabs */}
                 <div className="card-top-tabs">
-                  <button type="button" className="tab-item active">
+                  <button
+                    type="button"
+                    className={`tab-item ${currentView === "pnr" ? "active" : ""}`}
+                    onClick={() => {
+                      setCurrentView("pnr");
+                      if (lastBookedPnr) {
+                        setPnrSearch(lastBookedPnr);
+                        if (!pnrTicket) handlePnrSearch(lastBookedPnr);
+                      }
+                    }}
+                  >
                     <IconTicket size={15} /> <span>PNR STATUS</span>
+                  </button>
+                  <button type="button" className="tab-item active">
+                    <IconTrain size={15} /> <span>BOOK TICKET</span>
                   </button>
                   <button type="button" className="tab-item">
                     <IconFileText size={15} /> <span>CHARTS / VACANCY</span>
@@ -1082,6 +1201,226 @@ function App() {
         </main>
       )}
 
+      {/* 3. VIEW C: PNR STATUS ENQUIRY (With 15-Minute Expiration Countdown & Passenger Manifest) */}
+      {currentView === "pnr" && (
+        <main className="pnr-enquiry-section">
+          <div className="pnr-main-container">
+            {/* Search Header Card */}
+            <div className="pnr-search-card">
+              <div className="pnr-header-title">
+                <div className="pnr-icon-wrapper">
+                  <IconTicket size={24} color="#0f2b5c" />
+                </div>
+                <div>
+                  <h2 className="pnr-card-heading">PASSENGER CURRENT STATUS ENQUIRY</h2>
+                  <p className="pnr-card-subheading">
+                    Enter your 10-digit Indian Railways PNR to inspect live booking details, berth allocation, and 15-minute TTL lifecycle.
+                  </p>
+                </div>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handlePnrSearch();
+                }}
+                className="pnr-search-form"
+              >
+                <div className="pnr-input-group">
+                  <div className="pnr-input-wrapper">
+                    <label className="pnr-input-label">Enter 10-Digit PNR Number</label>
+                    <input
+                      type="text"
+                      maxLength={10}
+                      placeholder="e.g. 2849102842"
+                      value={pnrSearch}
+                      onChange={(e) => setPnrSearch(e.target.value.replace(/\D/g, ""))}
+                      className="pnr-input font-mono"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="pnr-search-btn"
+                    disabled={pnrLoading || pnrSearch.length !== 10}
+                  >
+                    {pnrLoading ? "Fetching..." : "GET PNR STATUS"}
+                  </button>
+                  <button
+                    type="button"
+                    className="pnr-reset-btn"
+                    onClick={() => {
+                      setPnrSearch("");
+                      setPnrTicket(null);
+                      setPnrError("");
+                    }}
+                  >
+                    CLEAR
+                  </button>
+                </div>
+
+                {lastBookedPnr && (
+                  <div className="pnr-quick-fill">
+                    <span className="quick-fill-label">Most Recent Booking:</span>
+                    <button
+                      type="button"
+                      className="quick-fill-pill font-mono"
+                      onClick={() => {
+                        setPnrSearch(lastBookedPnr);
+                        handlePnrSearch(lastBookedPnr);
+                      }}
+                    >
+                      {lastBookedPnr} (Click to load)
+                    </button>
+                  </div>
+                )}
+              </form>
+
+              {pnrError && (
+                <div className="pnr-error-banner">
+                  <IconAlertTriangle size={18} color="#dc2626" />
+                  <div>
+                    <strong>Status Notice:</strong> {pnrError}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Ticket Details & Real-Time Expiration HUD */}
+            {pnrTicket && (
+              <div className="pnr-result-card">
+                {/* Top Banner with Countdown HUD */}
+                <div className="pnr-result-top-banner">
+                  <div className="pnr-display-left">
+                    <span className="pnr-display-label">PNR NUMBER</span>
+                    <span className="pnr-display-val font-mono">{pnrTicket.pnr}</span>
+                  </div>
+
+                  <div
+                    className={`pnr-countdown-hud ${
+                      (pnrTtlSeconds || 0) > 300
+                        ? "hud-green"
+                        : (pnrTtlSeconds || 0) > 60
+                        ? "hud-amber"
+                        : "hud-red"
+                    }`}
+                  >
+                    <IconClock size={16} />
+                    <span className="hud-label">RECORD VANISHES IN:</span>
+                    <span className="hud-timer font-mono">
+                      {Math.floor((pnrTtlSeconds || 0) / 60)
+                        .toString()
+                        .padStart(2, "0")}
+                      :
+                      {((pnrTtlSeconds || 0) % 60).toString().padStart(2, "0")}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Journey Grid */}
+                <div className="pnr-journey-grid">
+                  <div className="pnr-grid-cell">
+                    <span className="pnr-cell-label">Train Number & Name</span>
+                    <span className="pnr-cell-val">
+                      <strong>{pnrTicket.train?.number}</strong> / {pnrTicket.train?.name}
+                    </span>
+                  </div>
+                  <div className="pnr-grid-cell">
+                    <span className="pnr-cell-label">From Station</span>
+                    <span className="pnr-cell-val">
+                      <strong>{pnrTicket.train?.from}</strong> ({pnrTicket.train?.fromName || "Origin"})
+                    </span>
+                  </div>
+                  <div className="pnr-grid-cell">
+                    <span className="pnr-cell-label">To Station</span>
+                    <span className="pnr-cell-val">
+                      <strong>{pnrTicket.train?.to}</strong> ({pnrTicket.train?.toName || "Destination"})
+                    </span>
+                  </div>
+                  <div className="pnr-grid-cell">
+                    <span className="pnr-cell-label">Journey Date</span>
+                    <span className="pnr-cell-val font-mono">
+                      {pnrTicket.train?.journeyDate?.toString().split("T")[0] || pnrTicket.train?.journeyDate}
+                    </span>
+                  </div>
+                  <div className="pnr-grid-cell">
+                    <span className="pnr-cell-label">Class & Quota</span>
+                    <span className="pnr-cell-val">
+                      <strong>{pnrTicket.classCode}</strong> | {pnrTicket.quotaCode}
+                    </span>
+                  </div>
+                  <div className="pnr-grid-cell">
+                    <span className="pnr-cell-label">Total Fare</span>
+                    <span className="pnr-cell-val font-mono">₹ {pnrTicket.totalFare}</span>
+                  </div>
+                </div>
+
+                {/* Passenger Manifest Table */}
+                <div className="pnr-manifest-wrapper">
+                  <div className="manifest-header">
+                    <IconUsers size={16} color="#0f2b5c" />
+                    <h3>
+                      Passenger Manifest & Berth Allocation ({pnrTicket.passengers?.length || 1} Traveler
+                      {pnrTicket.passengers?.length > 1 ? "s" : ""})
+                    </h3>
+                  </div>
+
+                  <table className="pnr-manifest-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Passenger Name</th>
+                        <th>Age / Gender</th>
+                        <th>Coach</th>
+                        <th>Berth No.</th>
+                        <th>Berth Type</th>
+                        <th>Booking Status</th>
+                        <th>Current Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pnrTicket.passengers?.map((p, idx) => (
+                        <tr key={p.id || idx}>
+                          <td>{idx + 1}</td>
+                          <td>
+                            <strong>{p.name}</strong>
+                          </td>
+                          <td>
+                            {p.age} / {p.gender}
+                          </td>
+                          <td>
+                            <span className="coach-tag">{p.coach}</span>
+                          </td>
+                          <td className="font-mono">
+                            <strong>{p.berthNumber}</strong>
+                          </td>
+                          <td>{p.berthType}</td>
+                          <td>
+                            <span className="tag-cnf">CNF</span>
+                          </td>
+                          <td>
+                            <span className="tag-cnf">{p.status || "CNF"}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Auto-Expiration Notice */}
+                <div className="pnr-policy-banner">
+                  <IconShield size={16} color="#0f2b5c" />
+                  <p>
+                    <strong>15-Minute Ephemeral Lifecycle:</strong> This confirmed reservation was committed
+                    asynchronously to MySQL/TiDB. In accordance with flash-sale test parameters, this entire booking row
+                    and its passenger records will automatically vanish when the countdown reaches zero.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </main>
+      )}
+
       {/* 5. Booking / Waiting Room Modal */}
       {isModalOpen && (
         <div
@@ -1209,6 +1548,19 @@ function App() {
                 </div>
 
                 <div className="ticket-receipt-actions">
+                  <button
+                    type="button"
+                    className="ticket-action-btn pnr-track-btn"
+                    onClick={() => {
+                      setIsModalOpen(false);
+                      setPnrSearch(bookingResult.pnr);
+                      setCurrentView("pnr");
+                      handlePnrSearch(bookingResult.pnr);
+                    }}
+                  >
+                    <IconTicket size={14} />
+                    <span>Track PNR (15m TTL)</span>
+                  </button>
                   <button
                     type="button"
                     className="ticket-action-btn print-btn"

@@ -15,6 +15,10 @@ const dbConfig = process.env.DATABASE_URL
       uri: process.env.DATABASE_URL,
       waitForConnections: true,
       connectionLimit: 10,
+      maxIdle: 10,
+      idleTimeout: 60000,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 10000,
       queueLimit: 0,
       multipleStatements: true,
     }
@@ -26,10 +30,23 @@ const dbConfig = process.env.DATABASE_URL
       port: Number(process.env.MYSQL_PORT || 3306),
       waitForConnections: true,
       connectionLimit: 10,
+      maxIdle: 10,
+      idleTimeout: 60000,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 10000,
       queueLimit: 0,
       multipleStatements: true,
     };
 
 const pool = mysql.createPool(dbConfig);
+
+// Handle idle connection drop gracefully (common in cloud databases like TiDB Serverless / AWS)
+pool.on("error", (err) => {
+  if (err.code === "PROTOCOL_CONNECTION_LOST" || err.code === "ECONNRESET") {
+    // Expected when cloud database server terminates an idle socket
+    return;
+  }
+  console.warn("[MySQL Pool Notice]:", err.message);
+});
 
 module.exports = pool;
